@@ -7,7 +7,9 @@ const PROTECTED = [
   "/my-bookings",
   "/subscription",
   "/profile",
+  "/progress",
   "/admin",
+  "/trainer",
 ];
 
 export async function middleware(request: NextRequest) {

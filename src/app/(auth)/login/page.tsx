@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { Suspense, useState } from "react";
@@ -29,7 +29,9 @@ function LoginForm() {
     const dest =
       res.role === "admin"
         ? "/admin"
-        : searchParams.get("redirect") || "/dashboard";
+        : res.role === "trainer"
+          ? "/trainer"
+          : searchParams.get("redirect") || "/dashboard";
     router.push(dest);
     router.refresh();
   }

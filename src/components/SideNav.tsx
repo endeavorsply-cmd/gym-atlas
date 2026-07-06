@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -26,6 +26,8 @@ type NavItem = {
   icon: LucideIcon;
 };
 
+type Variant = "member" | "admin" | "trainer";
+
 const memberItems: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/progress", label: "Progress", icon: Activity },
@@ -44,19 +46,31 @@ const adminItems: NavItem[] = [
   { href: "/admin/scan", label: "Scan Check-in", icon: QrCode },
 ];
 
-const roots = new Set(["/dashboard", "/admin"]);
+const trainerItems: NavItem[] = [
+  { href: "/trainer", label: "Ringkasan", icon: LayoutDashboard },
+  { href: "/trainer/classes", label: "Kelas Saya", icon: CalendarDays },
+  { href: "/trainer/profile", label: "Profil", icon: User },
+];
+
+const roots = new Set(["/dashboard", "/admin", "/trainer"]);
+
+function itemsFor(variant: Variant): NavItem[] {
+  if (variant === "member") return memberItems;
+  if (variant === "admin") return adminItems;
+  return trainerItems;
+}
 
 export default function SideNav({
   variant,
   title,
 }: {
-  variant: "member" | "admin";
+  variant: Variant;
   title: string;
 }) {
   const pathname = usePathname();
   const router = useRouter();
   const { signOut } = useAuth();
-  const items = variant === "member" ? memberItems : adminItems;
+  const items = itemsFor(variant);
 
   async function handleLogout() {
     await signOut();

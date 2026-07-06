@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Award, ArrowRight } from "lucide-react";
 import { siteConfig } from "@/lib/config";
+import { getPublicTrainers } from "@/lib/trainer-queries";
 
 export const metadata: Metadata = {
   title: "Trainer",
@@ -9,46 +10,64 @@ export const metadata: Metadata = {
     "Kenali personal trainer bersertifikat Atlas Sports Club Malang yang siap mendampingi perjalanan kebugaranmu.",
 };
 
-type Trainer = {
+type TrainerCard = {
   nama: string;
   spesialis: string;
   pengalaman: string;
   bio: string;
-  inisial: string;
+  foto: string | null;
 };
 
-const trainers: Trainer[] = [
+const fallback: TrainerCard[] = [
   {
     nama: "Dimas Prakoso",
     spesialis: "HIIT & Body Combat",
     pengalaman: "8 tahun",
     bio: "Spesialis latihan kardio intensitas tinggi untuk pembakaran lemak maksimal.",
-    inisial: "DP",
+    foto: null,
   },
   {
     nama: "Sarah Wijaya",
     spesialis: "Yoga & Pilates",
     pengalaman: "6 tahun",
     bio: "Membantu anggota membangun kekuatan inti, fleksibilitas, dan ketenangan pikiran.",
-    inisial: "SW",
+    foto: null,
   },
   {
     nama: "Bagus Santoso",
     spesialis: "Strength & Functional",
     pengalaman: "10 tahun",
     bio: "Ahli angkat beban dan latihan fungsional dengan fokus pada teknik yang aman.",
-    inisial: "BS",
+    foto: null,
   },
   {
     nama: "Nadia Putri",
     spesialis: "Spin & Zumba",
     pengalaman: "5 tahun",
-    bio: "Menghadirkan kelas penuh energi yang membuat latihan terasa seperti pesta.",
-    inisial: "NP",
+    bio: "Menghadirkan kelas penuh energi yang membuat latihan terasa menyenangkan.",
+    foto: null,
   },
 ];
 
-export default function TrainersPage() {
+function inisial(nama: string): string {
+  const parts = nama.trim().split(/\s+/);
+  const first = parts[0]?.charAt(0) ?? "";
+  const last = parts.length > 1 ? parts[parts.length - 1].charAt(0) : "";
+  return (first + last).toUpperCase() || "T";
+}
+
+export default async function TrainersPage() {
+  const db = await getPublicTrainers();
+  const trainers: TrainerCard[] = db.length
+    ? db.map((t) => ({
+        nama: t.nama,
+        spesialis: t.spesialis ?? "Personal Trainer",
+        pengalaman: t.pengalaman ?? "-",
+        bio: t.bio ?? "",
+        foto: t.foto,
+      }))
+    : fallback;
+
   return (
     <div className="mx-auto max-w-7xl px-5 pb-24 pt-36 md:px-10">
       <div className="mx-auto max-w-2xl text-center">
@@ -71,9 +90,17 @@ export default function TrainersPage() {
             key={t.nama}
             className="group flex flex-col rounded-lg border border-white/8 bg-ink-800 p-6 transition-all duration-300 hover:-translate-y-1 hover:border-brand-500/40"
           >
-            <span className="flex h-16 w-16 items-center justify-center rounded-lg bg-gradient-to-br from-brand-600 to-brand-800 font-serif text-xl font-bold text-white">
-              {t.inisial}
-            </span>
+            {t.foto ? (
+              <img
+                src={t.foto}
+                alt={t.nama}
+                className="h-16 w-16 rounded-lg object-cover"
+              />
+            ) : (
+              <span className="flex h-16 w-16 items-center justify-center rounded-lg bg-gradient-to-br from-brand-600 to-brand-800 font-serif text-xl font-bold text-white">
+                {inisial(t.nama)}
+              </span>
+            )}
             <h3 className="mt-5 text-lg font-semibold text-white">{t.nama}</h3>
             <p className="text-xs font-semibold uppercase tracking-wider text-brand-500">
               {t.spesialis}
@@ -81,7 +108,7 @@ export default function TrainersPage() {
             <p className="mt-2 flex items-center gap-1.5 text-xs text-zinc-500">
               <Award className="h-3.5 w-3.5" /> Pengalaman {t.pengalaman}
             </p>
-            <p className="mt-3 text-sm text-zinc-400">{t.bio}</p>
+            {t.bio && <p className="mt-3 text-sm text-zinc-400">{t.bio}</p>}
           </div>
         ))}
       </div>
