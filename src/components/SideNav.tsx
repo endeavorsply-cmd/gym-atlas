@@ -1,0 +1,121 @@
+﻿"use client";
+
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import {
+  Dumbbell,
+  LogOut,
+  LayoutDashboard,
+  CalendarDays,
+  Ticket,
+  CreditCard,
+  User,
+  Users,
+  Receipt,
+  Image as ImageIcon,
+  QrCode,
+  Activity,
+  BarChart3,
+  type LucideIcon,
+} from "lucide-react";
+import { useAuth } from "@/lib/auth";
+
+type NavItem = {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+};
+
+const memberItems: NavItem[] = [
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/progress", label: "Progress", icon: Activity },
+  { href: "/classes", label: "Jadwal Kelas", icon: CalendarDays },
+  { href: "/my-bookings", label: "Booking Saya", icon: Ticket },
+  { href: "/subscription", label: "Langganan", icon: CreditCard },
+  { href: "/profile", label: "Profil", icon: User },
+];
+
+const adminItems: NavItem[] = [
+  { href: "/admin", label: "Ringkasan", icon: LayoutDashboard },
+  { href: "/admin/analytics", label: "Analitik", icon: BarChart3 },
+  { href: "/admin/members", label: "Anggota", icon: Users },
+  { href: "/admin/transactions", label: "Transaksi", icon: Receipt },
+  { href: "/admin/promos", label: "Promo", icon: ImageIcon },
+  { href: "/admin/scan", label: "Scan Check-in", icon: QrCode },
+];
+
+const roots = new Set(["/dashboard", "/admin"]);
+
+export default function SideNav({
+  variant,
+  title,
+}: {
+  variant: "member" | "admin";
+  title: string;
+}) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const { signOut } = useAuth();
+  const items = variant === "member" ? memberItems : adminItems;
+
+  async function handleLogout() {
+    await signOut();
+    router.push("/login");
+    router.refresh();
+  }
+
+  return (
+    <aside className="hidden w-64 shrink-0 flex-col border-r border-white/8 bg-ink-900 md:flex">
+      <Link
+        href="/"
+        className="flex h-16 items-center gap-3 border-b border-white/8 px-6"
+      >
+        <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-brand-500 bg-brand-600/10 text-brand-500">
+          <Dumbbell className="h-4 w-4" />
+        </span>
+        <span className="font-serif text-base font-bold uppercase tracking-widest text-white">
+          Atlas <span className="text-brand-500">Sports</span>
+        </span>
+      </Link>
+
+      <div className="px-4 pt-5">
+        <p className="px-2 pb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+          {title}
+        </p>
+        <nav className="flex flex-col gap-1">
+          {items.map((item) => {
+            const active =
+              pathname === item.href ||
+              (!roots.has(item.href) && pathname.startsWith(item.href));
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                  active
+                    ? "bg-brand-600/15 text-brand-400"
+                    : "text-zinc-400 hover:bg-white/5 hover:text-white"
+                }`}
+              >
+                <Icon className="h-4 w-4" />
+                {item.label}
+              </Link>
+            );
+          })}
+        </nav>
+      </div>
+
+      <div className="mt-auto border-t border-white/8 p-4">
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-zinc-400 hover:bg-white/5 hover:text-white"
+        >
+          <LogOut className="h-4 w-4" />
+          Keluar
+        </button>
+      </div>
+    </aside>
+  );
+}
