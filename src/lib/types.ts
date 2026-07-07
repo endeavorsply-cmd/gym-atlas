@@ -12,6 +12,7 @@ export type ClassRow = {
   level: string | null;
   kategori: string | null;
   is_active: boolean | null;
+  trainer_id: string | null;
 };
 
 export type PackageRow = {
@@ -32,6 +33,7 @@ export type ProfileRow = {
   no_hp: string | null;
   foto: string | null;
   role: string | null;
+  checkin_code: string | null;
   created_at: string | null;
 };
 

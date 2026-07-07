@@ -7,6 +7,7 @@ import {
   Activity,
   ArrowRight,
   Clock,
+  Lock,
 } from "lucide-react";
 import { getDashboardData, getMyCheckinCode } from "@/lib/queries";
 import { formatJam, formatTanggal } from "@/lib/format";
@@ -19,8 +20,8 @@ export const metadata: Metadata = {
 };
 
 export default async function DashboardPage() {
-const { upcoming, recommended, stats } = await getDashboardData();
-const card = await getMyCheckinCode();
+  const { upcoming, recommended, stats } = await getDashboardData();
+  const card = await getMyCheckinCode();
 
   const cards = [
     {
@@ -122,15 +123,34 @@ const card = await getMyCheckinCode();
           </div>
         </div>
 
-      <div>
-        {card && (
-        <div className="mb-6">
-          <MemberQR code={card.code} nama={card.nama} />
-        </div>
-       )}
-      <h2 className="text-lg font-semibold text-white">
-        Rekomendasi kelas
-      </h2>
+        <div>
+          <div className="mb-6">
+            {card ? (
+              <MemberQR code={card.code} nama={card.nama} />
+            ) : (
+              <div className="rounded-xl border border-white/8 bg-ink-800 p-6 text-center">
+                <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-brand-500/20 bg-brand-600/10 text-brand-500">
+                  <Lock className="h-6 w-6" />
+                </span>
+                <h2 className="mt-4 font-serif text-lg font-bold text-white">
+                  Kartu Anggota Terkunci
+                </h2>
+                <p className="mt-1 text-sm text-zinc-400">
+                  QR akses masuk gym akan muncul otomatis setelah langganan kamu
+                  aktif.
+                </p>
+                <Link
+                  href="/subscription"
+                  className="mt-4 inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-brand-500 to-brand-700 px-4 py-2.5 text-sm font-bold uppercase tracking-wide text-white shadow-lg shadow-brand-700/30 transition-transform hover:-translate-y-0.5"
+                >
+                  Lihat Paket Langganan <ArrowRight className="h-4 w-4" />
+                </Link>
+              </div>
+            )}
+          </div>
+          <h2 className="text-lg font-semibold text-white">
+            Rekomendasi kelas
+          </h2>
           <div className="mt-4 space-y-3">
             {recommended.length === 0 ? (
               <div className="rounded-xl border border-dashed border-white/10 bg-ink-800 p-8 text-center text-sm text-zinc-500">

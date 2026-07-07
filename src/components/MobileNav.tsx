@@ -44,6 +44,7 @@ const adminItems: NavItem[] = [
   { href: "/admin", label: "Ringkasan", icon: LayoutDashboard },
   { href: "/admin/analytics", label: "Analitik", icon: BarChart3 },
   { href: "/admin/members", label: "Anggota", icon: Users },
+  { href: "/admin/classes", label: "Kelas", icon: CalendarDays },
   { href: "/admin/transactions", label: "Transaksi", icon: Receipt },
   { href: "/admin/promos", label: "Promo", icon: ImageIcon },
   { href: "/admin/scan", label: "Scan Check-in", icon: QrCode },

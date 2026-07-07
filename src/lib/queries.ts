@@ -271,6 +271,30 @@ export async function getAllProfiles(): Promise<ProfileRow[]> {
   return (data ?? []) as ProfileRow[];
 }
 
+export async function getAllClasses(): Promise<ClassRow[]> {
+  const supabase = await createClient();
+  if (!supabase) return [];
+  const { data } = await supabase
+    .from("classes")
+    .select("*")
+    .order("hari", { ascending: true })
+    .order("jam", { ascending: true });
+  return (data ?? []) as ClassRow[];
+}
+
+export async function getTrainerOptions(): Promise<
+  { id: string; nama: string }[]
+> {
+  const supabase = await createClient();
+  if (!supabase) return [];
+  const { data } = await supabase
+    .from("profiles")
+    .select("id, nama")
+    .eq("role", "trainer")
+    .order("nama", { ascending: true });
+  return (data ?? []) as { id: string; nama: string }[];
+}
+
 export async function getAllTransactions(): Promise<TransactionView[]> {
   const supabase = await createClient();
   if (!supabase) return [];
@@ -371,6 +395,19 @@ export async function getMyCheckinCode(): Promise<{
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return null;
+
+  // QR hanya ditampilkan jika langganan masih aktif (status active &
+  // belum melewati tanggal selesai). Member tanpa langganan tidak dapat QR.
+  const today = todayISO();
+  const { data: subs } = await supabase
+    .from("subscriptions")
+    .select("status")
+    .eq("user_id", user.id)
+    .eq("status", "active")
+    .or(`tanggal_selesai.is.null,tanggal_selesai.gte.${today}`)
+    .limit(1);
+  if (!subs || subs.length === 0) return null;
+
   const { data } = await supabase
     .from("profiles")
     .select("checkin_code, nama")
@@ -383,35 +420,115 @@ export async function getMyCheckinCode(): Promise<{
   };
 }
 
-// ---- Helper untuk fitur progress & analitik ----
+// ---------- Analitik admin & progress member ----------
 
-// Tanggal YYYY-MM-DD dalam zona waktu Asia/Jakarta.
-function jakartaDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-CA", {
-    timeZone: "Asia/Jakarta",
-  });
-}
+export async function getAdminAnalytics(): Promise<{
+  members: number;
+  activeSubs: number;
+  revenueMonthly: { label: string; value: number }[];
+  attendanceWeekday: { label: string; value: number }[];
+  popularClasses: { nama: string; value: number }[];
+}> {
+  const supabase = await createClient();
+  const empty = {
+    members: 0,
+    activeSubs: 0,
+    revenueMonthly: [] as { label: string; value: number }[],
+    attendanceWeekday: [] as { label: string; value: number }[],
+    popularClasses: [] as { nama: string; value: number }[],
+  };
+  if (!supabase) return empty;
 
-// 6 bulan terakhir (termasuk bulan ini) dalam label singkat Indonesia.
-function lastSixMonths(): { key: string; label: string }[] {
-  const bulan = [
-    "Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
-    "Jul", "Agu", "Sep", "Okt", "Nov", "Des",
+  const monthLabels = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "Mei",
+    "Jun",
+    "Jul",
+    "Agu",
+    "Sep",
+    "Okt",
+    "Nov",
+    "Des",
   ];
-  const nowJkt = new Date().toLocaleDateString("en-CA", {
-    timeZone: "Asia/Jakarta",
-  });
-  const [y, mo] = nowJkt.split("-").map(Number);
-  const out: { key: string; label: string }[] = [];
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(y, mo - 1 - i, 1);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    out.push({ key, label: bulan[d.getMonth()] });
+  const weekdayLabels = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
+
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+  const startISO = start.toISOString().slice(0, 10);
+
+  const [membersRes, activeRes, paidRes, attRes, bookingRes, classRes] =
+    await Promise.all([
+      supabase.from("profiles").select("*", { count: "exact", head: true }),
+      supabase
+        .from("subscriptions")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "active"),
+      supabase
+        .from("transactions")
+        .select("jumlah, created_at")
+        .eq("status", "paid")
+        .gte("created_at", startISO),
+      supabase.from("attendance").select("tanggal"),
+      supabase.from("bookings").select("class_id").neq("status", "cancelled"),
+      supabase.from("classes").select("id, nama"),
+    ]);
+
+  const revMap = new Map<string, number>();
+  for (let i = 0; i < 6; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - 5 + i, 1);
+    revMap.set(`${d.getFullYear()}-${d.getMonth()}`, 0);
   }
-  return out;
+  for (const t of (paidRes.data ?? []) as {
+    jumlah: number;
+    created_at: string;
+  }[]) {
+    const d = new Date(t.created_at);
+    const key = `${d.getFullYear()}-${d.getMonth()}`;
+    if (revMap.has(key))
+      revMap.set(key, (revMap.get(key) ?? 0) + (t.jumlah ?? 0));
+  }
+  const revenueMonthly = Array.from(revMap.entries()).map(([key, value]) => {
+    const m = Number(key.split("-")[1]);
+    return { label: monthLabels[m], value };
+  });
+
+  const wd = [0, 0, 0, 0, 0, 0, 0];
+  for (const a of (attRes.data ?? []) as { tanggal: string }[]) {
+    const d = new Date(a.tanggal);
+    wd[d.getDay()]++;
+  }
+  const weekdayOrder = [1, 2, 3, 4, 5, 6, 0];
+  const attendanceWeekday = weekdayOrder.map((i) => ({
+    label: weekdayLabels[i],
+    value: wd[i],
+  }));
+
+  const classMap = new Map<string, string>();
+  for (const c of (classRes.data ?? []) as { id: string; nama: string }[]) {
+    classMap.set(c.id, c.nama);
+  }
+  const countMap = new Map<string, number>();
+  for (const b of (bookingRes.data ?? []) as { class_id: string | null }[]) {
+    if (!b.class_id) continue;
+    countMap.set(b.class_id, (countMap.get(b.class_id) ?? 0) + 1);
+  }
+  const popularClasses = Array.from(countMap.entries())
+    .map(([id, value]) => ({ nama: classMap.get(id) ?? "Kelas", value }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 5);
+
+  return {
+    members: membersRes.count ?? 0,
+    activeSubs: activeRes.count ?? 0,
+    revenueMonthly,
+    attendanceWeekday,
+    popularClasses,
+  };
 }
 
-// Progress kehadiran member yang sedang login.
 export async function getMyProgress(): Promise<{
   totalSessions: number;
   thisMonth: number;
@@ -419,6 +536,7 @@ export async function getMyProgress(): Promise<{
   lastVisit: string | null;
   monthly: { label: string; value: number }[];
 }> {
+  const supabase = await createClient();
   const empty = {
     totalSessions: 0,
     thisMonth: 0,
@@ -426,7 +544,6 @@ export async function getMyProgress(): Promise<{
     lastVisit: null as string | null,
     monthly: [] as { label: string; value: number }[],
   };
-  const supabase = await createClient();
   if (!supabase) return empty;
   const {
     data: { user },
@@ -435,135 +552,71 @@ export async function getMyProgress(): Promise<{
 
   const { data } = await supabase
     .from("attendance")
-    .select("created_at")
+    .select("tanggal")
     .eq("user_id", user.id)
-    .order("created_at", { ascending: false });
+    .order("tanggal", { ascending: false });
 
-  const rows = (data ?? []) as { created_at: string | null }[];
-  const dates = rows
-    .map((r) => (r.created_at ? jakartaDate(r.created_at) : null))
-    .filter((d): d is string => !!d);
-  const dateSet = new Set(dates);
+  const rows = (data ?? []) as { tanggal: string }[];
+  const totalSessions = rows.length;
 
-  const monthly = lastSixMonths().map((m) => ({
-    label: m.label,
-    value: dates.filter((d) => d.slice(0, 7) === m.key).length,
-  }));
+  const monthLabels = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "Mei",
+    "Jun",
+    "Jul",
+    "Agu",
+    "Sep",
+    "Okt",
+    "Nov",
+    "Des",
+  ];
+  const now = new Date();
+  const thisMonthKey = `${now.getFullYear()}-${now.getMonth()}`;
 
-  const nowMonth = new Date()
-    .toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta" })
-    .slice(0, 7);
-  const thisMonth = dates.filter((d) => d.slice(0, 7) === nowMonth).length;
+  const map = new Map<string, number>();
+  for (let i = 0; i < 6; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - 5 + i, 1);
+    map.set(`${d.getFullYear()}-${d.getMonth()}`, 0);
+  }
+  let thisMonth = 0;
+  const daySet = new Set<string>();
+  for (const r of rows) {
+    const d = new Date(r.tanggal);
+    const key = `${d.getFullYear()}-${d.getMonth()}`;
+    if (map.has(key)) map.set(key, (map.get(key) ?? 0) + 1);
+    if (key === thisMonthKey) thisMonth++;
+    daySet.add(r.tanggal);
+  }
+  const monthly = Array.from(map.entries()).map(([key, value]) => {
+    const m = Number(key.split("-")[1]);
+    return { label: monthLabels[m], value };
+  });
 
-  // Streak hari beruntun (mundur dari hari ini; kalau hari ini kosong mulai kemarin).
+  const iso = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${dd}`;
+  };
   let streakDays = 0;
   const cursor = new Date();
-  if (!dateSet.has(jakartaDate(cursor.toISOString()))) {
+  cursor.setHours(0, 0, 0, 0);
+  if (!daySet.has(iso(cursor))) {
     cursor.setDate(cursor.getDate() - 1);
   }
-  while (dateSet.has(jakartaDate(cursor.toISOString()))) {
+  while (daySet.has(iso(cursor))) {
     streakDays++;
     cursor.setDate(cursor.getDate() - 1);
   }
 
   return {
-    totalSessions: rows.length,
+    totalSessions,
     thisMonth,
     streakDays,
-    lastVisit: dates[0] ?? null,
+    lastVisit: rows.length > 0 ? rows[0].tanggal : null,
     monthly,
-  };
-}
-
-// Data analitik untuk dashboard admin.
-export async function getAdminAnalytics(): Promise<{
-  revenueMonthly: { label: string; value: number }[];
-  popularClasses: { nama: string; value: number }[];
-  attendanceWeekday: { label: string; value: number }[];
-  members: number;
-  activeSubs: number;
-}> {
-  const empty = {
-    revenueMonthly: [] as { label: string; value: number }[],
-    popularClasses: [] as { nama: string; value: number }[],
-    attendanceWeekday: [] as { label: string; value: number }[],
-    members: 0,
-    activeSubs: 0,
-  };
-  const supabase = await createClient();
-  if (!supabase) return empty;
-
-  const [
-    { data: paid },
-    { data: bookings },
-    { data: att },
-    membersRes,
-    activeRes,
-    map,
-  ] = await Promise.all([
-    supabase
-      .from("transactions")
-      .select("jumlah, paid_at, created_at")
-      .eq("status", "paid"),
-    supabase.from("bookings").select("class_id, status"),
-    supabase.from("attendance").select("created_at"),
-    supabase.from("profiles").select("*", { count: "exact", head: true }),
-    supabase
-      .from("subscriptions")
-      .select("*", { count: "exact", head: true })
-      .eq("status", "active"),
-    classMap(supabase),
-  ]);
-
-  const months = lastSixMonths();
-  const revByKey = new Map<string, number>();
-  (
-    (paid ?? []) as {
-      jumlah: number;
-      paid_at: string | null;
-      created_at: string | null;
-    }[]
-  ).forEach((t) => {
-    const iso = t.paid_at ?? t.created_at;
-    if (!iso) return;
-    const key = jakartaDate(iso).slice(0, 7);
-    revByKey.set(key, (revByKey.get(key) ?? 0) + (t.jumlah ?? 0));
-  });
-  const revenueMonthly = months.map((m) => ({
-    label: m.label,
-    value: revByKey.get(m.key) ?? 0,
-  }));
-
-  const clsCount = new Map<string, number>();
-  ((bookings ?? []) as { class_id: string | null; status: string | null }[]).forEach(
-    (b) => {
-      if (!b.class_id || b.status === "cancelled") return;
-      clsCount.set(b.class_id, (clsCount.get(b.class_id) ?? 0) + 1);
-    },
-  );
-  const popularClasses = Array.from(clsCount.entries())
-    .map(([id, value]) => ({ nama: map.get(id)?.nama ?? "Kelas", value }))
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 5);
-
-  const hari = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
-  const wd = [0, 0, 0, 0, 0, 0, 0];
-  ((att ?? []) as { created_at: string | null }[]).forEach((a) => {
-    if (!a.created_at) return;
-    const idx = new Date(
-      new Date(a.created_at).toLocaleString("en-US", {
-        timeZone: "Asia/Jakarta",
-      }),
-    ).getDay();
-    wd[idx] = (wd[idx] ?? 0) + 1;
-  });
-  const attendanceWeekday = hari.map((label, i) => ({ label, value: wd[i] }));
-
-  return {
-    revenueMonthly,
-    popularClasses,
-    attendanceWeekday,
-    members: membersRes.count ?? 0,
-    activeSubs: activeRes.count ?? 0,
   };
 }
